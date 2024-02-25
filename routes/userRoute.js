@@ -3,7 +3,13 @@ const user_route = express();
 const session = require("express-session");
 
 const config = require("../config/config");
-user_route.use(session({ secret: config.sessionSecret }));
+user_route.use(
+  session({
+    secret: config.sessionSecret
+  })
+);
+
+user_route.use(express.static("public"));
 
 const auth = require("../middleware/auth");
 
@@ -16,7 +22,7 @@ user_route.use(express.urlencoded({ extended: true }));
 const multer = require("multer");
 const path = require("path");
 
-user_route.use(express.static('public'));
+user_route.use(express.static("public"));
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -28,7 +34,6 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({ storage: storage });
-
 
 const userController = require("../controllers/userController");
 
@@ -45,8 +50,8 @@ user_route.get("/home", auth.isLogin, userController.loadHome);
 
 user_route.get("/logout", auth.isLogin, userController.userLogout);
 
-user_route.get('/edit',auth.isLogin,userController.editLoad);
+user_route.get("/edit", auth.isLogin, userController.editLoad);
 
-user_route.post("/edit",upload.single('image'), userController.updateProfile);
+user_route.post("/edit", upload.single("image"), userController.updateProfile);
 
 module.exports = user_route;

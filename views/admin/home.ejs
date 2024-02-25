@@ -1,25 +1,74 @@
 <% include("../layouts/header.ejs") %>
-<h1>Welcome <%= admin.name %></h1>
-<button><a href="/admin/dashboard">Dashboard</a></button>
-<table style="width: 50%">
-  <tr>
-    <td>
-      <img
-        src="/userImages/<%= admin.image  %>"
-        width="100px"
-        height="100px"
-        alt="<%=admin.image  %>"
-      />
-    </td>
-  </tr>
-  <tr>
-    <td>Email:</td>
-    <td><%= admin.email %></td>
-  </tr>
-  <tr>
-    <td>Mobile:</td>
-    <td><%= admin.mobile %></td>
-  </tr>
-</table>
-<a href="/admin/logout">Logout</a>
+
+<!-- Link to Bootstrap CSS (adjust the version as needed) -->
+<link
+  rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+/>
+
+<style>
+  body {
+    background-color: #2b2b2b;
+    color: white;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+  }
+
+  .glass-container {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid black;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 4px 8px rgba(255, 255, 255, 0.1),
+      0 0 40px rgba(255, 255, 255, 0.1);
+  }
+
+  /* Add more styles as needed */
+</style>
+
+<div class="container mt-5">
+  <div class="row justify-content-center">
+    <div class="col-md-4">
+      <div class="glass-container text-center">
+        <div class="card-body">
+          <h1>Welcome <%= admin.name %></h1>
+
+          <button class="btn btn-primary">
+            <a
+              href="/admin/dashboard"
+              style="color: white; text-decoration: none"
+              >Dashboard</a
+            >
+          </button>
+          <br /><br />
+          <table class="table rounded">
+            <tr>
+              <!-- Adjusted image width to double the size -->
+              <img
+                src="/userImages/<%= admin.image %>"
+                class="img-fluid"
+                alt="<%= admin.image %>"
+                width="800px"
+              />
+            </tr>
+            <tr>
+              <td>Email:</td>
+              <td><%= admin.email %></td>
+            </tr>
+            <tr>
+              <td>Mobile:</td>
+              <td><%= admin.mobile %></td>
+            </tr>
+          </table>
+
+          <a href="/admin/logout" class="btn btn-danger">Logout</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <% include('../layouts/footer.ejs') %>
