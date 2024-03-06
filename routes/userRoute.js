@@ -6,6 +6,8 @@ const config = require("../config/config");
 user_route.use(
   session({
     secret: config.sessionSecret,
+    saveUninitialized: false,
+    resave: false,
   })
 );
 
@@ -20,8 +22,6 @@ user_route.use(express.json());
 user_route.use(
   express.urlencoded({
     extended: true,
-    saveUninitialized: false,
-    resave: false,
   })
 );
 
