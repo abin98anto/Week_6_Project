@@ -3,7 +3,13 @@ const admin_route = express();
 
 const session = require("express-session");
 const config = require("../config/config");
-admin_route.use(session({ secret: config.sessionSecret }));
+admin_route.use(
+  session({
+    secret: config.sessionSecret,
+    saveUninitialized: false,
+    resave: false,
+  })
+);
 
 admin_route.use(express.json());
 admin_route.use(express.urlencoded({ extended: true }));
@@ -49,7 +55,7 @@ admin_route.get("/edit-user", auth.isLogin, adminController.editUserLoad);
 
 admin_route.post("/edit-user", adminController.updateUsers);
 
-admin_route.get('/delete-user', adminController.deleteUser);
+admin_route.get("/delete-user", adminController.deleteUser);
 
 admin_route.get("*", (req, res) => {
   res.redirect("/admin");

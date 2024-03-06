@@ -5,7 +5,7 @@ const session = require("express-session");
 const config = require("../config/config");
 user_route.use(
   session({
-    secret: config.sessionSecret
+    secret: config.sessionSecret,
   })
 );
 
@@ -17,7 +17,13 @@ user_route.set("view engine", "ejs");
 user_route.set("views", "./views/users");
 
 user_route.use(express.json());
-user_route.use(express.urlencoded({ extended: true }));
+user_route.use(
+  express.urlencoded({
+    extended: true,
+    saveUninitialized: false,
+    resave: false,
+  })
+);
 
 const multer = require("multer");
 const path = require("path");

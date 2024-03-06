@@ -1,0 +1,1429 @@
+the problem still exists and when I click second time in the back button it goes to user/login. Solve the issue. Here are the codes:
+
+index.js:
+const mongoose = require("mongoose");
+mongoose.connect("mongodb://127.0.0.1:27017/week6_project");
+
+const express = require("express");
+const app = express();
+
+// for user routes
+const userRoute = require("./routes/userRoute");
+app.use("/", userRoute);
+
+// for admin route
+const adminRoute = require("./routes/adminRoute");
+app.use("/admin", adminRoute);
+
+app.listen(3000, () => console.log(`server is running at http://localhost:3000`));
+
+adminRoute.js:
+const express = require("express");
+const admin_route = express();
+
+const session = require("express-session");
+const config = require("../config/config");
+
+admin_route.use((req,res,next) => {
+  res.header("Cache-Control", "private, no-cache, no-store, must-revalidate");
+  res.header("Expires","-1");
+  res.header("Pragma", "no-cache");
+  next();
+});
+
+admin_route.use(
+  session({
+    secret: config.sessionSecret,
+    resave: false,
+    saveUninitialized: false,
+  })
+);
+
+admin_route.use(express.json());
+admin_route.use(express.urlencoded({ extended: true }));
+
+const multer = require("multer");
+const path = require("path");
+
+admin_route.use(express.static("public"));
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, path.join(__dirname, "../public/userImages"));
+  },
+  filename: (req, file, cb) => {
+    const name = Date.now() + "-" + file.originalname;
+    cb(null, name);
+  },
+});
+const upload = multer({ storage: storage });
+
+admin_route.set("view engine", "ejs");
+admin_route.set("views", "./views/admin");
+
+const auth = require("../middleware/adminAuth");
+
+const adminController = require("../controllers/adminController");
+
+admin_route.get("/", auth.isLogout, adminController.loadLogin);
+
+admin_route.post("/", adminController.verifyLogin);
+
+admin_route.get("/home", auth.isLogin, adminController.loadDashboard);
+
+admin_route.get("/logout", auth.isLogin, adminController.logout);
+
+admin_route.get("/dashboard", auth.isLogin, adminController.adminDashboard);
+
+admin_route.get("/new-user", auth.isLogin, adminController.newUserLoad);
+
+admin_route.post("/new-user", upload.single("image"), adminController.addUser);
+
+admin_route.get("/edit-user", auth.isLogin, adminController.editUserLoad);
+
+admin_route.post("/edit-user", adminController.updateUsers);
+
+admin_route.get("/delete-user", adminController.deleteUser);
+
+admin_route.get("*", (req, res) => {
+  res.redirect("/admin");
+});
+
+module.exports = admin_route;
+
+userRoute.js:
+const express = require("express");
+const user_route = express();
+const session = require("express-session");
+
+const config = require("../config/config");
+user_route.use(
+  session({
+    secret: config.sessionSecret,
+    resave: false,
+    saveUninitialized: false,
+  })
+);
+
+user_route.use(express.static("public"));
+
+const auth = require("../middleware/auth");
+
+user_route.set("view engine", "ejs");
+user_route.set("views", "./views/users");
+
+user_route.use(express.json());
+user_route.use(express.urlencoded({ extended: true }));
+
+const multer = require("multer");
+const path = require("path");
+
+user_route.use(express.static("public"));
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, path.join(__dirname, "../public/userImages"));
+  },
+  filename: (req, file, cb) => {
+    const name = Date.now() + "-" + file.originalname;
+    cb(null, name);
+  },
+});
+const upload = multer({ storage: storage });
+
+const userController = require("../controllers/userController");
+
+user_route.get("/register", auth.isLogout, userController.loadRegister);
+
+user_route.post("/register", upload.single("image"), userController.insertUser);
+
+user_route.get("/", auth.isLogout, userController.loginLoad);
+user_route.get("/login", auth.isLogout, userController.loginLoad);
+
+user_route.post("/login", userController.verifyLogin);
+
+user_route.get("/home", auth.isLogin, userController.loadHome);
+
+user_route.get("/logout", auth.isLogin, userController.userLogout);
+
+user_route.get("/edit", auth.isLogin, userController.editLoad);
+
+user_route.post("/edit", upload.single("image"), userController.updateProfile);
+
+module.exports = user_route;
+
+adminController.js:
+const User = require("../models/userModel");
+const bcrypt = require("bcrypt");
+
+const securePassword = async (password) => {
+  try {
+    const passwordHash = await bcrypt.hash(password, 10);
+    return passwordHash;
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+const loadLogin = async (req, res) => {
+  try {
+    res.render("login");
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+const verifyLogin = async (req, res) => {
+  try {
+    const email = req.body.email;
+    const password = req.body.password;
+    const userData = await User.findOne({ email: email }); //
+    if (userData) {
+      const passwordMath = await bcrypt.compare(password, userData.password);
+      if (passwordMath) {
+        if (userData.is_admin === 0) {
+          res.render("login", { message: "Email and password is incorrect" });
+        } else {
+          req.session.user_id = userData._id;
+          req.session.isAdmin = true;
+          res.redirect("/admin/home");
+        }
+      } else {
+        res.render("login", { message: "Email and password is incorrect" });
+      }
+    } else {
+      res.render("login", { message: "Email and password is incorrect" });
+    }
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+const loadDashboard = async (req, res) => {
+  try {
+    if (req.session.isAdmin) {
+      const userData = await User.findById({ _id: req.session.user_id });
+      res.render("home", { admin: userData });
+    } else {
+      res.redirect("/admin");
+    }
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+const logout = async (req, res) => {
+  try {
+    req.session.destroy();
+    res.redirect("/admin");
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+const adminDashboard = async (req, res) => {
+  try {
+    const userData = await User.find({ is_admin: 0 });
+    res.render("dashboard", { users: userData });
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+// add new user part
+
+const newUserLoad = async (req, res) => {
+  try {
+    res.render("new-user");
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+const addUser = async (req, res) => {
+  try {
+    const name = req.body.name;
+    const email = req.body.email;
+    const mobile = req.body.mno;
+    const image = req.file.filename;
+    const password = req.body.password;
+
+    const spassword = await securePassword(password);
+
+    const user = new User({
+      name: name,
+      email: email,
+      mobile: mobile,
+      image: image,
+      password: spassword,
+      is_admin: 0,
+    });
+
+    const userData = await user.save();
+
+    if (userData) {
+      res.redirect("/admin/dashboard");
+    } else {
+      res.render("new-user", { message: "something went wrong." });
+    }
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+// edit user feature
+
+const editUserLoad = async (req, res) => {
+  try {
+    const id = req.query.id;
+    const userData = await User.findById({ _id: id });
+    if (userData) {
+      res.render("edit-user", { user: userData });
+    } else {
+      res.redirect("/admin/dashboard");
+    }
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+const updateUsers = async (req, res) => {
+  try {
+    const userData = await User.findByIdAndUpdate(
+      { _id: req.body.id },
+      {
+        $set: {
+          name: req.body.name,
+          email: req.body.email,
+          mobile: req.body.mno,
+        },
+      }
+    );
+    res.redirect("/admin/dashboard");
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+// delete functionality
+const deleteUser = async (req, res) => {
+  try {
+    const id = req.query.id;
+    await User.deleteOne({ _id: id });
+    res.redirect("/admin/dashboard");
+  } catch (error) {
+    console.log(error.message);
+    res.redirect("/admin/dashboard");
+  }
+};
+
+module.exports = {
+  loadLogin,
+  verifyLogin,
+  loadDashboard,
+  logout,
+  adminDashboard,
+  newUserLoad,
+  addUser,
+  editUserLoad,
+  updateUsers,
+  deleteUser,
+};
+
+userController.js:
+const User = require("../models/userModel");
+const bcrypt = require("bcrypt");
+
+const securePassword = async (password) => {
+  try {
+    const passwordHash = await bcrypt.hash(password, 10);
+    return passwordHash;
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+const loadRegister = async (req, res) => {
+  try {
+    res.render("registration");
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+const insertUser = async (req, res) => {
+  try {
+    const spassword = await securePassword(req.body.password);
+    const user = new User({
+      name: req.body.name,
+      email: req.body.email,
+      mobile: req.body.mno,
+      image: req.file.filename,
+      password: spassword,
+      is_admin: 0,
+    });
+
+    const userData = await user.save();
+    if (userData) {
+      res.render("registration", {
+        message: "Your registration has been done successfully.",
+      });
+    } else {
+      res.render("registration", {
+        message: "Your registration has failed.",
+      });
+    }
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+// login user methods started
+
+const loginLoad = async (req, res) => {
+  try {
+    res.render("login");
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+const verifyLogin = async (req, res) => {
+  try {
+    const email = req.body.email;
+    const password = req.body.password;
+    const userData = await User.findOne({ email: email });
+    if (userData) {
+      const passwordMath = await bcrypt.compare(password, userData.password);
+      if (passwordMath) {
+        //if (userData.is_verified === 0) {
+        //   res.render("login", { message: "Please verify your mail." });
+        // } else {
+        req.session.user_id = userData._id;
+        res.redirect("/home");
+        //}
+      } else {
+        res.render("login", { message: "Email and password is incorrect." });
+      }
+    } else {
+      res.render("login", { message: "Email and password is incorrect." });
+    }
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+const loadHome = async (req, res) => {
+  try {
+    const userData = await User.findById({ _id: req.session.user_id });
+    res.render("home", { user: userData });
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+const userLogout = async (req, res) => {
+  try {
+    req.session.destroy();
+    res.redirect("/");
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+// user profile updation feature
+
+const editLoad = async (req, res) => {
+  try {
+    const id = req.query.id;
+    const userData = await User.findById({ _id: id });
+    if (userData) {
+      res.render("edit", { user: userData });
+    } else {
+      res.redirect("/home");
+    }
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+const updateProfile = async (req, res) => {
+  try {
+    if (req.file) {
+      const userData = await User.findByIdAndUpdate(
+        { _id: req.body.user_id },
+        {
+          $set: {
+            name: req.body.name,
+            email: req.body.email,
+            mobile: req.body.mobile,
+            image: req.file.filename,
+          },
+        }
+      );
+    } else {
+      const userData = await User.findByIdAndUpdate(
+        { _id: req.body.user_id },
+        {
+          $set: {
+            name: req.body.name,
+            email: req.body.email,
+            mobile: req.body.mobile,
+          },
+        }
+      );
+    }
+    res.redirect("/home");
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+module.exports = {
+  loadRegister,
+  insertUser,
+  loginLoad,
+  loadHome,
+  verifyLogin,
+  userLogout,
+  editLoad,
+  updateProfile,
+};
+
+adminAuth.js:
+const isLogin = async (req, res, next) => {
+  try {
+    if (req.session.user_id) {
+      next();
+    } else {
+      res.redirect("/");
+    }
+  } catch (error) {
+    console.log(error.message);
+    res.status(500).send("Internal server error");
+  }
+};
+
+const isLogout = async(req,res,next)=> {
+    try {
+        if(req.session.user_id) {
+            res.redirect('/admin/home');
+        }
+        next();
+    } catch (error) {
+        console.log(error.message);
+    }
+}
+
+module.exports = {
+    isLogin,
+    isLogout
+}
+
+auth.js:
+const isLogin = async (req, res, next) => {
+  try {
+    if (req.session.user_id) {
+    } else {
+      res.redirect("/");
+    }
+    next();
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+const isLogout = async (req, res, next) => {
+  try {
+    if (req.session.user_id) {
+      res.redirect("/home");
+    }
+    next();
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+module.exports = {
+  isLogin,
+  isLogout,
+};
+
+/admin/dashboard.ejs:
+<% include('../layouts/header.ejs') %>
+
+<!-- Link to Bootstrap CSS (adjust the version as needed) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"/>
+
+<style>
+    body {
+        background-color: #2b2b2b;
+        color: white;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        max-width: 1100px;
+        border-radius: 5;
+    }
+
+    table {
+        background: #1f1f1f; 
+        border: 10px solid black;
+        border-radius: 50px;
+        padding: 10px;
+        box-shadow: 0 4px 8px rgba(255, 255, 255, 0.1), 0 0 40px rgba(255, 255, 255, 0.1);
+        margin-top: 20px;
+        width: 100%;
+    }
+
+    th, td {
+        color: white;
+        padding: 5px;
+        text-align: center;
+    }
+
+    th {
+        background-color: #3498db;
+    }
+
+    img {
+        border-radius: 5px; /* Rounded corners for images */
+    }
+
+    button {
+      margin: 10px;
+    }
+
+     /* .buttons-container {
+        margin-top: 20px;
+        display: flex;
+        justify-content: space-evenly;
+        align-items: center;
+        width: 100%;
+    }
+
+    .buttons-container a {
+        margin-bottom: 10px;
+        
+    }  */
+</style>
+<h1>Dashboard</h1>
+<div class="buttons-container">
+        <a href="/admin/new-user" class="btn btn-primary">Add New User</a>
+        <a href="/admin/home" class="btn btn-secondary">Home</a>
+    </div>
+
+<div class="container">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Mobile</th>
+                <th>Image</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <% if (users.length > 0) { %>
+                <% for (let i=0; i<users.length; i++) { %>
+                    <tr>
+                        <td><%= users[i].name %></td>
+                        <td><%= users[i].email %></td>
+                        <td><%= users[i].mobile %></td>
+                        <td><img src="/userImages/<%= users[i].image %>" alt="<%= users[i].image %>" width="100px" height="100px"></td>
+                        <td>
+                            <a href="/admin/edit-user?id=<%= users[i]._id %>" class="btn btn-info">Edit</a>
+                            <a href="/admin/delete-user?id=<%= users[i]._id %>" class="btn btn-danger">Delete</a>
+                        </td>
+                    </tr>
+                <% } %>
+            <% } else { %>
+                <tr>
+                    <td colspan="5">Users Not Found!</td>
+                </tr>
+            <% } %>
+        </tbody>
+    </table>
+</div>
+
+<% include('../layouts/footer.ejs') %>
+
+/admin/edit-user.ejs:
+<% include('../layouts/header.ejs') %>
+
+<!-- Link to Bootstrap CSS (adjust the version as needed) -->
+<link
+  rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+/>
+
+<style>
+  body {
+    background-color: #2b2b2b;
+    color: white;
+    height: 100vh;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .glass-container {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid black;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 4px 8px rgba(255, 255, 255, 0.1),
+      0 0 40px rgba(255, 255, 255, 0.1);
+    width: 400px; /* Adjust the width as needed */
+  }
+
+  form {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+  }
+
+  input,
+  select {
+    width: 100%;
+    padding: 15px; /* Increased padding */
+    margin-bottom: 15px;
+    border: none;
+    border-bottom: 1px solid black; /* Add an underline effect */
+    background-color: transparent;
+    color: white;
+    outline: none;
+  }
+
+  input[type="submit"] {
+    background-color: #3498db;
+    color: white;
+    cursor: pointer;
+  }
+
+  a {
+    color: #ffc107;
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: none;
+  }
+
+  /* Add more styles as needed */
+</style>
+
+<div class="glass-container text-center">
+  <div class="card-body">
+    <h1>Edit User</h1>
+
+    <form action="" method="post">
+      <div class="mb-3">
+        <input
+          width="350px;"
+          type="text"
+          name="name"
+          class="form-control"
+          placeholder="Enter Name"
+          value="<%= user.name %>"
+          required
+        />
+      </div>
+      <div class="mb-3">
+        <input
+          width="350px;"
+          type="email"
+          name="email"
+          class="form-control"
+          placeholder="Enter Email"
+          value="<%= user.email %>"
+          required
+        />
+      </div>
+      <div class="mb-3">
+        <input
+          width="350px;"
+          type="text"
+          name="mno"
+          class="form-control"
+          placeholder="Enter Mobile"
+          value="<%= user.mobile %>"
+          required
+        />
+      </div>
+      <input type="hidden" name="id" value="<%= user._id %>" />
+      <div class="mb-3">
+        <input type="submit" value="Update" class="btn btn-primary" />
+      </div>
+    </form>
+
+    <a href="/admin/dashboard" class="btn btn-warning text-decoration-none"
+      >Go Back</a
+    >
+  </div>
+</div>
+
+<% include('../layouts/footer.ejs') %>
+
+/admin/home.ejs:
+<% include("../layouts/header.ejs") %>
+
+<!-- Link to Bootstrap CSS (adjust the version as needed) -->
+<link
+  rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+/>
+
+<style>
+  body {
+    background-color: #2b2b2b;
+    color: white;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+  }
+
+  .glass-container {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid black;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 4px 8px rgba(255, 255, 255, 0.1),
+      0 0 40px rgba(255, 255, 255, 0.1);
+  }
+
+  /* Add more styles as needed */
+</style>
+
+<div class="container mt-5">
+  <div class="row justify-content-center">
+    <div class="col-md-4">
+      <div class="glass-container text-center">
+        <div class="card-body">
+          <h1>Welcome <%= admin.name %></h1>
+
+          <button class="btn btn-primary">
+            <a
+              href="/admin/dashboard"
+              style="color: white; text-decoration: none"
+              >Dashboard</a
+            >
+          </button>
+          <br /><br />
+          <table class="table rounded">
+            <tr>
+              <!-- Adjusted image width to double the size -->
+              <img
+                src="/userImages/<%= admin.image %>"
+                class="img-fluid"
+                alt="<%= admin.image %>"
+                width="800px"
+              />
+            </tr>
+            <tr>
+              <td>Email:</td>
+              <td><%= admin.email %></td>
+            </tr>
+            <tr>
+              <td>Mobile:</td>
+              <td><%= admin.mobile %></td>
+            </tr>
+          </table>
+
+          <a href="/admin/logout" class="btn btn-danger">Logout</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<% include('../layouts/footer.ejs') %>
+
+admin/login.ejs:
+<% include("../layouts/header.ejs") %>
+
+<!-- Link to Bootstrap CSS (adjust the version as needed) -->
+<link
+  rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+/>
+
+<style>
+  body {
+    background-color: #2b2b2b;
+    color: white;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+  }
+
+  .glass-container {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid black;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 4px 8px rgba(255, 255, 255, 0.1),
+      0 0 40px rgba(255, 255, 255, 0.1);
+  }
+
+  /* Add more styles as needed */
+</style>
+
+<div class="container mt-5">
+  <div class="row justify-content-center">
+    <div class="col-md-4">
+      <div class="glass-container text-center">
+        <div class="card-body">
+          <h1>Admin Login</h1>
+
+          <% if(typeof message !== "undefined") { %>
+          <h3><%= message %></h3>
+          <% } %>
+
+          <form action="" method="post">
+            <div class="mb-3">
+              <input
+                type="email"
+                name="email"
+                class="form-control"
+                placeholder="Enter Email"
+              />
+            </div>
+            <div class="mb-3">
+              <input
+                type="password"
+                name="password"
+                class="form-control"
+                placeholder="Enter Password"
+              />
+            </div>
+            <div class="mb-3">
+              <input type="submit" value="Login" class="btn btn-primary" />
+            </div>
+          </form>
+
+          <button class="btn btn-warning text-decoration-none">
+            <a href="/login" style="text-decoration: none; color: white"
+              >User Login</a
+            >
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<% include('../layouts/footer.ejs') %>
+/admin/new-user.ejs:
+<% include("../layouts/header.ejs") %>
+
+<!-- Link to Bootstrap CSS (adjust the version as needed) -->
+<link
+  rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+/>
+
+<style>
+  body {
+    background-color: #2b2b2b;
+    color: white;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .glass-container {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid black;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 4px 8px rgba(255, 255, 255, 0.1),
+      0 0 40px rgba(255, 255, 255, 0.1);
+    width: 400px; /* Adjust the width as needed */
+  }
+
+  form {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  input,
+  select {
+    margin-bottom: 15px;
+    border: none;
+    border-bottom: 1px solid black;
+    background-color: transparent;
+    color: white;
+    outline: none;
+  }
+
+  input[type="submit"] {
+    background-color: #3498db;
+    color: white;
+    cursor: pointer;
+  }
+
+  button {
+    background-color: #ffc107;
+    border: none;
+    border-radius: 5px;
+    padding: 15px;
+    cursor: pointer;
+  }
+
+  a {
+    color: white;
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: none;
+  }
+
+  p {
+    color: red;
+  }
+</style>
+
+<div class="glass-container text-center">
+  <div class="card-body">
+    <h1>Add New User</h1>
+
+    <form action="" method="post" enctype="multipart/form-data">
+      <div class="mb-3">
+        <input
+          style="width: 350px"
+          type="text"
+          name="name"
+          class="form-control"
+          placeholder="Enter Name"
+          required
+        />
+      </div>
+      <div class="mb-3">
+        <input
+          style="width: 350px"
+          type="email"
+          name="email"
+          class="form-control"
+          placeholder="Enter Email"
+          required
+        />
+      </div>
+      <div class="mb-3">
+        <input
+          style="width: 350px"
+          type="text"
+          name="mno"
+          class="form-control"
+          placeholder="Enter Mobile"
+          required
+        />
+      </div>
+      <div class="mb-3">
+        <input
+          style="width: 350px"
+          type="file"
+          name="image"
+          class="form-control"
+        />
+      </div>
+      <div class="mb-3">
+        <input
+          style="width: 350px"
+          type="password"
+          name="password"
+          class="form-control"
+          placeholder="Enter Password"
+          required
+        />
+      </div>
+      <div class="mb-3">
+        <input type="submit" value="Add User" class="btn btn-primary" />
+      </div>
+    </form>
+
+    <button class="btn btn-warning">
+      <a
+        href="/admin/dashboard"
+        class="text-decoration-none"
+        style="color: white"
+        >Go Home</a
+      >
+    </button>
+
+    <% if(typeof message !== 'undefined') { %>
+    <p style="color: green"><%= message %></p>
+    <% } %>
+  </div>
+</div>
+
+<% include("../layouts/footer.ejs") %>
+/users/edit.js:
+<% include("../layouts/header.ejs") %>
+
+<!-- Link to Bootstrap CSS (adjust the version as needed) -->
+<link
+  rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+/>
+
+<style>
+  body {
+    background-color: #2b2b2b;
+    color: white;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+  }
+
+  .glass-container {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid black;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 4px 8px rgba(255, 255, 255, 0.1),
+      0 0 40px rgba(255, 255, 255, 0.1);
+  }
+
+  /* Add more styles as needed */
+</style>
+
+<div class="container mt-5">
+  <div class="row justify-content-center">
+    <div class="col-md-4">
+      <div class="glass-container text-center">
+        <div class="card-body">
+          <img
+            src="userImages/<%= user.image %>"
+            alt="<%= user.image %>"
+            width="150px"
+            height="150px"
+          />
+
+          <form action="" method="post" enctype="multipart/form-data">
+            <input type="file" name="image" />
+            <br /><br />
+            <input
+              type="hidden"
+              name="user_id"
+              value="<%= user._id %>"
+              placeholder="Enter Name"
+              required
+            />
+            <br /><br />
+            <input
+              type="text"
+              name="name"
+              value="<%= user.name %>"
+              placeholder="Enter Name"
+              required
+            />
+            <br /><br />
+            <input
+              type="email"
+              name="email"
+              value="<%= user.email %>"
+              placeholder="Enter Email"
+              required
+            />
+            <br /><br />
+            <input
+              type="text"
+              name="mobile"
+              value="<%= user.mobile %>"
+              placeholder="Enter Mobile"
+              required
+            />
+            <br /><br />
+            <input type="submit" value="Update" class="btn btn-primary" />
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<% include("../layouts/footer.ejs") %>
+
+/users/home.ejs:
+<% include("../layouts/header.ejs") %>
+
+<!-- Link to Bootstrap CSS (adjust the version as needed) -->
+<link
+  rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+/>
+
+<style>
+  body {
+    background-color: #2b2b2b;
+    color: white;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+  }
+
+  .glass-container {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid black;
+    border-radius: 10px; /* Added border-radius for rounded corners */
+    padding: 20px;
+    box-shadow: 0 4px 8px rgba(255, 255, 255, 0.1),
+      0 0 40px rgba(255, 255, 255, 0.1);
+  }
+
+  /* Add more styles as needed */
+</style>
+
+<div class="container mt-5">
+  <div class="row justify-content-center">
+    <div class="col-md-4">
+      <div class="glass-container text-center">
+        <div class="card-body">
+          <h3>Welcome Home! <%= user.name %></h3>
+
+          <table class="table">
+            <tr>
+              <td colspan="2">
+                <img
+                  src="userImages/<%= user.image %>"
+                  class="img-fluid"
+                  alt="<%= user.image %>"
+                />
+              </td>
+            </tr>
+            <tr>
+              <td>Email:</td>
+              <td><%= user.email %></td>
+            </tr>
+            <tr>
+              <td>Mobile:</td>
+              <td><%= user.mobile %></td>
+            </tr>
+          </table>
+
+          <a href="/edit?id=<%= user._id %>" class="btn btn-primary">Edit</a>
+          <a href="/logout" class="btn btn-danger">Logout</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<% include('../layouts/footer.ejs') %>
+
+/users/login.ejs:
+<% include("../layouts/header.ejs") %>
+
+<!-- Link to Bootstrap CSS (adjust the version as needed) -->
+<link
+  rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+/>
+
+<style>
+  body {
+    background-color: #2b2b2b;
+    color: white;
+    height: 100vh; /* Set the body to full height of the viewport */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0; /* Remove default body margin */
+  }
+
+  .glass-card {
+    background: rgba(255, 255, 255, 0.1); /* Transparent white background */
+    border: 1px solid rgba(255, 255, 255, 0.2); /* Slightly visible border */
+    border-radius: 10px; /* Rounded corners */
+    padding: 20px;
+    box-shadow: 0 4px 8px rgba(255, 255, 255, 0.1),
+      0 0 40px rgba(255, 255, 255, 0.1); /* Box shadow for a glass-like effect */
+  }
+
+  /* Add more styles as needed */
+</style>
+
+<div class="container mt-5">
+  <div class="row justify-content-center">
+    <div class="col-md-4">
+      <div class="glass-card text-center">
+        <div class="card-body">
+          <h1 class="mb-4">Login</h1>
+          <% if(typeof message !== 'undefined') { %>
+          <h4><%= message %></h4>
+          <% } %>
+
+          <form action="/login" method="post">
+            <div class="mb-3">
+              <label for="email" class="form-label">Email</label>
+              <input
+                type="email"
+                class="form-control"
+                id="email"
+                name="email"
+                placeholder="Enter Email"
+                required
+              />
+            </div>
+
+            <div class="mb-3">
+              <label for="password" class="form-label">Password</label>
+              <input
+                type="password"
+                class="form-control"
+                id="password"
+                name="password"
+                placeholder="Enter Password"
+                required
+              />
+            </div>
+
+            <button type="submit" class="btn btn-primary mx-auto">Login</button>
+          </form>
+
+          <button class="btn btn-secondary mt-3">
+            <a href="/register" class="text-white text-decoration-none"
+              >New User</a
+            >
+          </button>
+
+          <button class="btn btn-secondary mt-3">
+            <a href="/admin/login" class="text-white text-decoration-none"
+              >Admin Login</a
+            >
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<% include("../layouts/footer.ejs") %>
+
+/users/registration.ejs:
+
+<% include('../layouts/header.ejs') %>
+
+<!-- Link to Bootstrap CSS (adjust the version as needed) -->
+<link
+  rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+/>
+
+<style>
+  body {
+    background-color: #2b2b2b;
+    color: white;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+  }
+
+  .glass-container {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid black;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 4px 8px rgba(255, 255, 255, 0.1),
+      0 0 40px rgba(255, 255, 255, 0.1);
+  }
+
+  /* Add more styles as needed */
+</style>
+
+<div class="container mt-5">
+  <div class="row justify-content-center">
+    <div class="col-md-4">
+      <div class="glass-container text-center">
+        <div class="card-body">
+          <h1>User Registration Form</h1>
+
+          <form action="" method="post" enctype="multipart/form-data">
+            <div class="mb-3">
+              <input
+                type="text"
+                name="name"
+                class="form-control"
+                placeholder="Enter Name"
+                required
+              />
+            </div>
+            <div class="mb-3">
+              <input
+                type="email"
+                name="email"
+                class="form-control"
+                placeholder="Enter Email"
+                required
+              />
+            </div>
+            <div class="mb-3">
+              <input
+                type="text"
+                name="mno"
+                class="form-control"
+                placeholder="Enter Mobile"
+                required
+              />
+            </div>
+            <div class="mb-3">
+              <input type="file" name="image" class="form-control" />
+            </div>
+            <div class="mb-3">
+              <input
+                type="password"
+                name="password"
+                class="form-control"
+                placeholder="Enter Password"
+                required
+              />
+            </div>
+            <div class="mb-3">
+              <input type="submit" value="Register" class="btn btn-primary" />
+            </div>
+          </form>
+
+          <button class="btn btn-warning text-decoration-none">
+            <a href="/" style="text-decoration: none; color: white">Go Home</a>
+          </button>
+
+          <% if(typeof message !== 'undefined') { %>
+          <p style="color: green"><%= message %></p>
+          <% } %>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<% include('../layouts/footer.ejs') %>
+
